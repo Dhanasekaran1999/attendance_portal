@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Create Employee</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0d1117;
+      color: white;
+      min-height: 100vh;
+      padding: 30px 20px;
+    }
+
+    h2 {
+      text-align: center;
+      font-size: 1.6rem;
+      margin-bottom: 6px;
+      color: #58a6ff;
+    }
+
+    p.subtitle {
+      text-align: center;
+      color: rgba(255,255,255,0.4);
+      font-size: 0.9rem;
+      margin-bottom: 30px;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+    }
+
+    @media (max-width: 700px) {
+      .container { grid-template-columns: 1fr; }
+    }
+
+    /* ── Form panel ── */
+    .panel {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 16px;
+      padding: 28px;
+    }
+
+    .panel h3 {
+      font-size: 1rem;
+      color: #58a6ff;
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.8rem;
+      color: rgba(255,255,255,0.5);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 11px 14px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(255,255,255,0.07);
+      color: white;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border 0.2s;
+    }
+
+    input:focus, select:focus {
+      border-color: #58a6ff;
+    }
+
+    input::placeholder { color: rgba(255,255,255,0.3); }
+
+    select option { background: #1a1f2e; color: white; }
+
+    /* ── Camera panel ── */
+    .camera-box {
+      position: relative;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #000;
+      border: 2px solid rgba(255,255,255,0.1);
+      margin-bottom: 12px;
+      min-height: 260px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    video {
+      width: 100%;
+      display: block;
+      border-radius: 10px;
+    }
+
+    /* Oval face guide */
+    .oval {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 150px; height: 190px;
+      border: 2px solid #58a6ff;
+      border-radius: 50%;
+      box-shadow: 0 0 20px #58a6ff44;
+      pointer-events: none;
+    }
+
+    img#facePreview {
+      width: 100%;
+      border-radius: 10px;
+      display: none;
+      border: 2px solid #3fb950;
+    }
+
+    canvas { display: none; }
+
+    /* Face status badge */
+    .face-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      margin-bottom: 12px;
+    }
+
+    .face-badge.none    { background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.5); }
+    .face-badge.good    { background: rgba(63,185,80,0.15);   color: #3fb950; }
+    .face-badge.bad     { background: rgba(248,81,73,0.15);   color: #f85149; }
+    .face-badge.checking{ background: rgba(255,193,7,0.15);   color: #ffc107; }
+
+    /* Buttons */
+    .btn {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: 8px;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+
+    .btn:hover  { opacity: 0.85; }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-camera  { background: #1f6feb; color: white; }
+    .btn-capture { background: #388bfd; color: white; }
+    .btn-retake  { background: rgba(255,255,255,0.1); color: white;
+                   border: 1px solid rgba(255,255,255,0.2); }
+    .btn-submit  {
+      background: linear-gradient(90deg, #238636, #2ea043);
+      color: white;
+      padding: 14px;
+      font-size: 1rem;
+      margin-top: 8px;
+    }
+
+    /* Status */
+    #submitStatus {
+      margin-top: 14px;
+      padding: 12px 16px;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      display: none;
+      text-align: center;
+    }
+
+    .status-success { background: rgba(63,185,80,0.15);  color: #3fb950; display: block !important; }
+    .status-error   { background: rgba(248,81,73,0.15);  color: #f85149; display: block !important; }
+    .status-loading { background: rgba(255,193,7,0.15);  color: #ffc107; display: block !important; }
+
+    .divider {
+      grid-column: 1 / -1;
+      height: 1px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>👤 Create New Employee</h2>
+  <p class="subtitle">Fill in the details and capture face for biometric registration</p>
+
+  <div class="container">
+
+    <!-- ── LEFT: Employee Details ── -->
+    <div class="panel">
+      <h3>📋 Employee Details</h3>
+
+      <div class="form-group">
+        <label>Admin ID (Requester) *</label>
+        <input type="text" id="requesterId" placeholder="e.g. EMP000" />
+      </div>
+
+      <div class="form-group">
+        <label>Employee ID *</label>
+        <input type="text" id="employeeId" placeholder="e.g. EMP001" />
+      </div>
+
+      <div class="form-group">
+        <label>Full Name *</label>
+        <input type="text" id="name" placeholder="e.g. Arjun Kumar" />
+      </div>
+
+      <div class="form-group">
+        <label>Email *</label>
+        <input type="email" id="email" placeholder="arjun@company.com" />
+      </div>
+
+      <div class="form-group">
+        <label>Phone *</label>
+        <input type="text" id="phone" placeholder="+91-9876543210" />
+      </div>
+
+      <div class="form-group">
+        <label>Department</label>
+        <input type="text" id="department" placeholder="e.g. Engineering" />
+      </div>
+
+      <div class="form-group">
+        <label>Designation *</label>
+        <input type="text" id="designation" placeholder="e.g. Software Developer" />
+      </div>
+
+      <div class="form-group">
+        <label>User Type *</label>
+        <select id="userType">
+          <option value="User">User (Employee)</option>
+          <option value="Admin">Admin</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Password *</label>
+        <input type="password" id="password" placeholder="Min 6 characters" />
+      </div>
+    </div>
+
+    <!-- ── RIGHT: Face Capture ── -->
+    <div class="panel">
+      <h3>📸 Face Registration</h3>
+
+      <!-- Face status -->
+      <div class="face-badge none" id="faceBadge">
+        ⬜ No face captured yet
+      </div>
+
+      <!-- Camera / Preview box -->
+      <div class="camera-box" id="cameraBox">
+        <span style="color:rgba(255,255,255,0.3); font-size:0.9rem;">
+          Click "Open Camera" to start
+        </span>
+      </div>
+
+      <video  id="video"       autoplay muted playsinline style="display:none;"></video>
+      <canvas id="canvas"></canvas>
+      <img    id="facePreview" alt="Captured face" />
+
+      <!-- Camera buttons -->
+      <button class="btn btn-camera"
+              id="btnOpenCamera"
+              onclick="openCamera()">
+        📷 Open Camera
+      </button>
+
+      <button class="btn btn-capture"
+              id="btnCapture"
+              onclick="capturePhoto()"
+              style="display:none;">
+        ✅ Capture Photo
+      </button>
+
+      <button class="btn btn-retake"
+              id="btnRetake"
+              onclick="retakePhoto()"
+              style="display:none;">
+        🔄 Retake Photo
+      </button>
+
+      <p style="color:rgba(255,255,255,0.3);
+                font-size:0.78rem;
+                margin-top:10px;
+                text-align:center;">
+        Face capture is optional. Employee can register face later.
+      </p>
+    </div>
+
+  </div>
+
+  <!-- Submit button (full width) -->
+  <div style="max-width:900px; margin:24px auto 0;">
+    <button class="btn btn-submit" onclick="submitForm()">
+      🚀 Create Employee
+    </button>
+    <div id="submitStatus"></div>
+  </div>
+
+  <script>
+    let capturedBlob = null;
+    let stream       = null;
+
+    const video       = document.getElementById('video');
+    const canvas      = document.getElementById('canvas');
+    const facePreview = document.getElementById('facePreview');
+    const cameraBox   = document.getElementById('cameraBox');
+
+    // ── Open camera ──
+    async function openCamera() {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 640, height: 480, facingMode: 'user' }
+        });
+
+        // Move video into camera box
+        cameraBox.innerHTML = '';
+        video.style.display = 'block';
+        cameraBox.appendChild(video);
+
+        // Add oval guide
+        const oval = document.createElement('div');
+        oval.className = 'oval';
+        cameraBox.appendChild(oval);
+
+        video.srcObject = stream;
+
+        document.getElementById('btnOpenCamera').style.display = 'none';
+        document.getElementById('btnCapture').style.display    = 'block';
+
+        setFaceBadge('checking', '🎥 Camera on — position face in oval');
+
+      } catch (err) {
+        setFaceBadge('bad', '❌ Camera access denied');
+      }
+    }
+
+    // ── Capture photo ──
+    async function capturePhoto() {
+      canvas.width  = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext('2d').drawImage(video, 0, 0);
+
+      setFaceBadge('checking', '⏳ Checking face...');
+
+      // Convert canvas to blob
+      canvas.toBlob(async (blob) => {
+        // First verify face is detected
+        const formData = new FormData();
+        formData.append('face_image', blob, 'face.jpg');
+
+        try {
+          const res    = await fetch('/admin/verify-face-capture', {
+            method: 'POST',
+            body:   formData
+          });
+          const result = await res.json();
+
+          if (result.success) {
+            // Face detected — show preview
+            capturedBlob = blob;
+
+            const url           = URL.createObjectURL(blob);
+            facePreview.src     = url;
+            facePreview.style.display = 'block';
+
+            // Stop camera, show preview
+            stopCamera();
+            cameraBox.innerHTML = '';
+            cameraBox.appendChild(facePreview);
+
+            document.getElementById('btnCapture').style.display = 'none';
+            document.getElementById('btnRetake').style.display  = 'block';
+
+            setFaceBadge('good',
+              `✅ Face detected! ${result.encoding_points} points ready`
+            );
+
+          } else {
+            setFaceBadge('bad', `❌ ${result.message}`);
+          }
+
+        } catch (err) {
+          setFaceBadge('bad', '❌ Network error checking face');
+        }
+
+      }, 'image/jpeg', 0.9);
+    }
+
+    // ── Retake photo ──
+    function retakePhoto() {
+      capturedBlob          = null;
+      facePreview.style.display = 'none';
+      facePreview.src       = '';
+
+      cameraBox.innerHTML   = '';
+      video.style.display   = 'block';
+      cameraBox.appendChild(video);
+
+      const oval = document.createElement('div');
+      oval.className = 'oval';
+      cameraBox.appendChild(oval);
+
+      openCamera();
+
+      document.getElementById('btnCapture').style.display = 'block';
+      document.getElementById('btnRetake').style.display  = 'none';
+
+      setFaceBadge('none', '⬜ No face captured yet');
+    }
+
+    // ── Stop camera stream ──
+    function stopCamera() {
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+        stream = null;
+      }
+    }
+
+    // ── Submit full form ──
+    async function submitForm() {
+      const requesterId = document.getElementById('requesterId').value.trim();
+      const employeeId  = document.getElementById('employeeId').value.trim();
+      const name        = document.getElementById('name').value.trim();
+      const email       = document.getElementById('email').value.trim();
+      const phone       = document.getElementById('phone').value.trim();
+      const department  = document.getElementById('department').value.trim();
+      const designation = document.getElementById('designation').value.trim();
+      const userType    = document.getElementById('userType').value;
+      const password    = document.getElementById('password').value;
+
+      // ── Client-side validation ──
+      if (!requesterId || !employeeId || !name ||
+          !email || !phone || !designation || !password) {
+        setStatus('⚠️ Please fill all required fields.', 'status-error');
+        return;
+      }
+
+      if (password.length < 6) {
+        setStatus('⚠️ Password must be at least 6 characters.', 'status-error');
+        return;
+      }
+
+      setStatus('⏳ Creating employee...', 'status-loading');
+
+      // ── Build FormData ──
+      const formData = new FormData();
+      formData.append('requester_id', requesterId);
+      formData.append('employee_id',  employeeId);
+      formData.append('name',         name);
+      formData.append('email',        email);
+      formData.append('phone',        phone);
+      formData.append('department',   department);
+      formData.append('designation',  designation);
+      formData.append('user_type',    userType);
+      formData.append('password',     password);
+
+      // Attach face image if captured
+      if (capturedBlob) {
+        formData.append('face_image', capturedBlob, 'face.jpg');
+      }
+
+      try {
+        const response = await fetch('/admin/create-employee-with-face', {
+          method: 'POST',
+          body:   formData
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+          setStatus(
+            `✅ ${result.message}<br>
+             📸 Face: ${result.face_status}`,
+            'status-success'
+          );
+          // Clear form after 2 seconds
+          setTimeout(clearForm, 3000);
+
+        } else {
+          setStatus(`❌ ${result.message}`, 'status-error');
+        }
+
+      } catch (err) {
+        setStatus(`❌ Network error: ${err.message}`, 'status-error');
+      }
+    }
+
+    // ── Clear form ──
+    function clearForm() {
+      ['requesterId','employeeId','name','email',
+       'phone','department','designation','password']
+        .forEach(id => document.getElementById(id).value = '');
+
+      document.getElementById('userType').value = 'User';
+      capturedBlob = null;
+      facePreview.style.display = 'none';
+      cameraBox.innerHTML =
+        '<span style="color:rgba(255,255,255,0.3);font-size:0.9rem;">Click "Open Camera" to start</span>';
+      document.getElementById('btnOpenCamera').style.display = 'block';
+      document.getElementById('btnCapture').style.display    = 'none';
+      document.getElementById('btnRetake').style.display     = 'none';
+      setFaceBadge('none', '⬜ No face captured yet');
+      document.getElementById('submitStatus').style.display  = 'none';
+    }
+
+    // ── Helpers ──
+    function setFaceBadge(type, msg) {
+      const el = document.getElementById('faceBadge');
+      el.className = `face-badge ${type}`;
+      el.innerHTML = msg;
+    }
+
+    function setStatus(msg, cls) {
+      const el  = document.getElementById('submitStatus');
+      el.innerHTML  = msg;
+      el.className  = cls;
+    }
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Register Face</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0f2027;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .card {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 20px;
+      padding: 40px;
+      width: 460px;
+      color: white;
+      text-align: center;
+    }
+
+    h2 {
+      font-size: 1.6rem;
+      margin-bottom: 6px;
+    }
+
+    p.subtitle {
+      color: rgba(255,255,255,0.5);
+      font-size: 0.9rem;
+      margin-bottom: 24px;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 12px 16px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.1);
+      color: white;
+      font-size: 1rem;
+      margin-bottom: 16px;
+      outline: none;
+    }
+
+    input[type="text"]::placeholder {
+      color: rgba(255,255,255,0.4);
+    }
+
+    /* Video container */
+    .video-wrap {
+      position: relative;
+      border-radius: 14px;
+      overflow: hidden;
+      margin-bottom: 16px;
+      border: 2px solid rgba(255,255,255,0.15);
+      background: #000;
+    }
+
+    video {
+      width: 100%;
+      display: block;
+      border-radius: 12px;
+    }
+
+    /* Face oval guide */
+    .oval-guide {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 180px;
+      height: 220px;
+      border: 3px solid #00e5ff;
+      border-radius: 50%;
+      box-shadow: 0 0 24px #00e5ff55;
+      pointer-events: none;
+    }
+
+    /* Corner dots */
+    .dot {
+      position: absolute;
+      width: 8px; height: 8px;
+      background: #00e5ff;
+      border-radius: 50%;
+    }
+    .dot.tl { top: 12px; left: 12px; }
+    .dot.tr { top: 12px; right: 12px; }
+    .dot.bl { bottom: 12px; left: 12px; }
+    .dot.br { bottom: 12px; right: 12px; }
+
+    /* Canvas hidden */
+    canvas { display: none; }
+
+    /* Preview image */
+    #preview {
+      width: 100%;
+      border-radius: 12px;
+      margin-bottom: 16px;
+      display: none;
+      border: 2px solid #00e676;
+    }
+
+    button {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 12px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: 10px;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+
+    button:hover  { opacity: 0.88; }
+    button:active { transform: scale(0.98); }
+
+    #btnCapture {
+      background: linear-gradient(90deg, #00c6ff, #0072ff);
+      color: white;
+    }
+
+    #btnRegister {
+      background: linear-gradient(90deg, #00b09b, #96c93d);
+      color: white;
+      display: none;
+    }
+
+    #btnRetake {
+      background: rgba(255,255,255,0.1);
+      color: white;
+      border: 1px solid rgba(255,255,255,0.2);
+      display: none;
+    }
+
+    /* Status box */
+    #status {
+      margin-top: 10px;
+      padding: 12px 16px;
+      border-radius: 10px;
+      font-size: 0.92rem;
+      min-height: 20px;
+      display: none;
+    }
+
+    .info    { background: rgba(0,200,255,0.12); color: #80d8ff; display: block !important; }
+    .success { background: rgba(0,230,118,0.12); color: #00e676; display: block !important; }
+    .error   { background: rgba(255,82,82,0.12);  color: #ff5252; display: block !important; }
+    .loading { background: rgba(255,200,0,0.12);  color: #ffd740; display: block !important; }
+
+    /* Steps indicator */
+    .steps {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+
+    .step {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.8rem;
+      color: rgba(255,255,255,0.4);
+    }
+
+    .step.active { color: #00e5ff; }
+    .step.done   { color: #00e676; }
+
+    .step-num {
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.1);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.75rem; font-weight: 700;
+    }
+
+    .step.active .step-num { background: #00e5ff; color: #000; }
+    .step.done   .step-num { background: #00e676; color: #000; }
+
+    .divider {
+      width: 20px; height: 1px;
+      background: rgba(255,255,255,0.2);
+      align-self: center;
+    }
+  </style>
+</head>
+<body>
+
+<div class="card">
+  <h2>📸 Face Registration</h2>
+  <p class="subtitle">Register your face for biometric login</p>
+
+  <!-- Steps -->
+  <div class="steps">
+    <div class="step active" id="step1">
+      <div class="step-num">1</div>
+      <span>Position</span>
+    </div>
+    <div class="divider"></div>
+    <div class="step" id="step2">
+      <div class="step-num">2</div>
+      <span>Capture</span>
+    </div>
+    <div class="divider"></div>
+    <div class="step" id="step3">
+      <div class="step-num">3</div>
+      <span>Save</span>
+    </div>
+  </div>
+
+  <!-- Employee ID -->
+  <input type="text" id="employeeId" placeholder="Enter Employee ID (e.g. EMP001)" />
+
+  <!-- Webcam -->
+  <div class="video-wrap" id="videoWrap">
+    <video id="video" autoplay muted playsinline></video>
+    <div class="oval-guide"></div>
+    <div class="dot tl"></div>
+    <div class="dot tr"></div>
+    <div class="dot bl"></div>
+    <div class="dot br"></div>
+  </div>
+
+  <!-- Captured preview -->
+  <img id="preview" alt="Captured face" />
+
+  <!-- Hidden canvas for capture -->
+  <canvas id="canvas"></canvas>
+
+  <!-- Buttons -->
+  <button id="btnCapture"  onclick="capturePhoto()">📷 Capture Photo</button>
+  <button id="btnRegister" onclick="registerFace()">✅ Register Face</button>
+  <button id="btnRetake"   onclick="retakePhoto()">🔄 Retake Photo</button>
+
+  <!-- Status -->
+  <div id="status"></div>
+</div>
+
+<script>
+  const video      = document.getElementById('video');
+  const canvas     = document.getElementById('canvas');
+  const preview    = document.getElementById('preview');
+  const btnCapture  = document.getElementById('btnCapture');
+  const btnRegister = document.getElementById('btnRegister');
+  const btnRetake   = document.getElementById('btnRetake');
+
+  let capturedImage = null;
+
+  // ── Start webcam ──
+  async function startCamera() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 640, height: 480, facingMode: 'user' }
+      });
+      video.srcObject = stream;
+      setStatus('Camera ready. Position your face inside the oval.', 'info');
+    } catch (err) {
+      setStatus('❌ Camera access denied. Please allow camera permission.', 'error');
+    }
+  }
+
+  // ── Capture photo from webcam ──
+  function capturePhoto() {
+    const empId = document.getElementById('employeeId').value.trim();
+    if (!empId) {
+      setStatus('⚠️ Please enter Employee ID first.', 'error');
+      return;
+    }
+
+    // Draw video frame to canvas
+    canvas.width  = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+
+    // Get base64 image
+    capturedImage = canvas.toDataURL('image/jpeg', 0.9);
+
+    // Show preview
+    preview.src     = capturedImage;
+    preview.style.display = 'block';
+
+    // Hide video, show preview buttons
+    document.getElementById('videoWrap').style.display = 'none';
+    btnCapture.style.display  = 'none';
+    btnRegister.style.display = 'block';
+    btnRetake.style.display   = 'block';
+
+    // Update steps
+    setStep(2);
+    setStatus('✅ Photo captured! Click "Register Face" to save.', 'info');
+  }
+
+  // ── Retake photo ──
+  function retakePhoto() {
+    capturedImage = null;
+    preview.style.display = 'none';
+    preview.src   = '';
+
+    document.getElementById('videoWrap').style.display = 'block';
+    btnCapture.style.display  = 'block';
+    btnRegister.style.display = 'none';
+    btnRetake.style.display   = 'none';
+
+    setStep(1);
+    setStatus('Camera ready. Position your face inside the oval.', 'info');
+  }
+
+  // ── Register face via API ──
+  async function registerFace() {
+    const empId = document.getElementById('employeeId').value.trim();
+
+    if (!capturedImage) {
+      setStatus('⚠️ Please capture a photo first.', 'error');
+      return;
+    }
+
+    setStatus('⏳ Uploading and processing face...', 'loading');
+    btnRegister.disabled = true;
+
+    try {
+      // Convert base64 to Blob (file-like object)
+      const blob     = base64ToBlob(capturedImage, 'image/jpeg');
+      const formData = new FormData();
+      formData.append('employee_id', empId);
+      formData.append('face_image',  blob, 'face.jpg');
+
+      const response = await fetch('/api/register-face', {
+        method: 'POST',
+        body:   formData    // No Content-Type header needed for FormData
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setStep(3);
+        setStatus(
+          `✅ ${result.message}<br>
+           📊 Face encoding: ${result.encoding_length} points saved`,
+          'success'
+        );
+        btnRegister.disabled = true;
+        btnRetake.disabled   = true;
+
+      } else {
+        setStatus(`❌ ${result.message}`, 'error');
+        btnRegister.disabled = false;
+      }
+
+    } catch (err) {
+      setStatus(`❌ Network error: ${err.message}`, 'error');
+      btnRegister.disabled = false;
+    }
+  }
+
+  // ── Helper: base64 → Blob ──
+  function base64ToBlob(base64, mimeType) {
+    const byteString = atob(base64.split(',')[1]);
+    const ab         = new ArrayBuffer(byteString.length);
+    const ia         = new Uint8Array(ab);
+    for (let i = 0; i < byteString.length; i++) {
+      ia[i] = byteString.charCodeAt(i);
+    }
+    return new Blob([ab], { type: mimeType });
+  }
+
+  // ── Helper: set status message ──
+  function setStatus(msg, type) {
+    const el    = document.getElementById('status');
+    el.innerHTML  = msg;
+    el.className  = type;
+  }
+
+  // ── Helper: update step indicator ──
+  function setStep(stepNum) {
+    for (let i = 1; i <= 3; i++) {
+      const el = document.getElementById(`step${i}`);
+      el.className = 'step';
+      if (i < stepNum)  el.classList.add('done');
+      if (i === stepNum) el.classList.add('active');
+    }
+  }
+
+  // ── Start camera on page load ──
+  startCamera();
+</script>
+
+</body>
+</html>

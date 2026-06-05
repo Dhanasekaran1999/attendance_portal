@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0d1117;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .card {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 20px;
+      padding: 36px;
+      width: 100%;
+      max-width: 400px;
+      color: white;
+    }
+    h2 { text-align: center; font-size: 1.5rem; color: #58a6ff; margin-bottom: 6px; }
+    p.subtitle { text-align: center; color: rgba(255,255,255,0.4); font-size: 0.85rem; margin-bottom: 24px; }
+    input {
+      width: 100%;
+      padding: 12px 16px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(255,255,255,0.07);
+      color: white;
+      font-size: 0.95rem;
+      margin-bottom: 14px;
+      outline: none;
+    }
+    input:focus { border-color: #58a6ff; }
+    input::placeholder { color: rgba(255,255,255,0.3); }
+    .btn {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 12px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      background: linear-gradient(90deg, #1f6feb, #388bfd);
+      color: white;
+      transition: opacity 0.2s;
+    }
+    .btn:hover    { opacity: 0.85; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    #status {
+      margin-top: 14px;
+      padding: 12px 16px;
+      border-radius: 10px;
+      font-size: 0.88rem;
+      display: none;
+      text-align: center;
+    }
+    .err     { background: rgba(248,81,73,0.12);  color: #f85149; display:block!important; }
+    .loading { background: rgba(255,193,7,0.12);  color: #ffc107; display:block!important; }
+  </style>
+</head>
+<body>
+
+<div class="card">
+  <h2>🔐 Employee Login</h2>
+  <p class="subtitle">Enter your credentials to continue</p>
+
+  <input type="text"     id="employeeId" placeholder="Employee ID (e.g. EMP013)" />
+  <input type="password" id="password"   placeholder="Password" />
+
+  <button class="btn" onclick="doLogin()">Login →</button>
+
+  <div id="status"></div>
+</div>
+
+<script>
+  async function doLogin() {
+    const employeeId = document.getElementById('employeeId').value.trim();
+    const password   = document.getElementById('password').value;
+
+    if (!employeeId || !password) {
+      setStatus('Please enter Employee ID and Password.', 'err');
+      return;
+    }
+
+    setStatus('Logging in...', 'loading');
+
+    const formData = new FormData();
+    formData.append('employee_id', employeeId);
+    formData.append('password',    password);
+
+    try {
+      const res    = await fetch('/api/login', { method: 'POST', body: formData });
+      const result = await res.json();
+
+      if (result.success) {
+        // ── Save employee_id to localStorage ──
+        localStorage.setItem('logged_in_employee_id', result.employee_id);
+        localStorage.setItem('logged_in_name',        result.name);
+        localStorage.setItem('token',                 result.token);
+
+        // ── Redirect to face login page ──
+        window.location.href = '/face-login-page';
+
+      } else {
+        setStatus(result.message, 'err');
+      }
+
+    } catch (err) {
+      setStatus('Network error: ' + err.message, 'err');
+    }
+  }
+
+  function setStatus(msg, cls) {
+    const el     = document.getElementById('status');
+    el.innerHTML = msg;
+    el.className = cls;
+  }
+</script>
+
+</body>
+</html>

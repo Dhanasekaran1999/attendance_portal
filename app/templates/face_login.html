@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Attendance Login</title>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0d1117;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .card {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 20px;
+      padding: 36px;
+      width: 100%;
+      max-width: 440px;
+      color: white;
+    }
+
+    h2 {
+      text-align: center;
+      font-size: 1.5rem;
+      color: #58a6ff;
+      margin-bottom: 6px;
+    }
+
+    p.subtitle {
+      text-align: center;
+      color: rgba(255,255,255,0.4);
+      font-size: 0.85rem;
+      margin-bottom: 24px;
+    }
+
+    /* Location status */
+    .location-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 0.83rem;
+      margin-bottom: 16px;
+    }
+
+    .loc-detecting { background: rgba(255,193,7,0.12);  color: #ffc107; }
+    .loc-success   { background: rgba(63,185,80,0.12);  color: #3fb950; }
+    .loc-error     { background: rgba(248,81,73,0.12);  color: #f85149; }
+
+    /* Camera box */
+    .camera-box {
+      position: relative;
+      border-radius: 14px;
+      overflow: hidden;
+      background: #000;
+      border: 2px solid rgba(255,255,255,0.1);
+      margin-bottom: 14px;
+      min-height: 280px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    video {
+      width: 100%;
+      display: block;
+      border-radius: 12px;
+    }
+
+    /* Oval guide */
+    .oval {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 160px; height: 200px;
+      border: 2px solid #58a6ff;
+      border-radius: 50%;
+      box-shadow: 0 0 24px #58a6ff55;
+      pointer-events: none;
+    }
+
+    canvas { display: none; }
+
+    /* Button */
+    .btn {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 12px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: 10px;
+      transition: opacity 0.2s;
+    }
+
+    .btn:hover    { opacity: 0.85; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-login {
+      background: linear-gradient(90deg, #1f6feb, #388bfd);
+      color: white;
+    }
+
+    /* Result */
+    #result {
+      margin-top: 12px;
+      padding: 14px 16px;
+      border-radius: 12px;
+      font-size: 0.88rem;
+      display: none;
+      text-align: center;
+      line-height: 1.7;
+    }
+
+    .res-success { background: rgba(63,185,80,0.12);  color: #3fb950; display:block!important; }
+    .res-error   { background: rgba(248,81,73,0.12);  color: #f85149; display:block!important; }
+    .res-loading { background: rgba(255,193,7,0.12);  color: #ffc107; display:block!important; }
+  </style>
+</head>
+
+<body>
+
+<div class="card">
+  <h2>🏢 Attendance Portal</h2>
+  <p class="subtitle">Face recognition + location verified login</p>
+  <p id="loggedInUser" style="text-align:center; color:#58a6ff; font-size:0.85rem; margin-bottom:16px;"></p>
+
+  <!-- Location -->
+  <div class="location-bar loc-detecting" id="locationBar">
+    📡 Detecting your location...
+  </div>
+
+  <!-- Camera -->
+  <div class="camera-box" id="cameraBox">
+    <span style="color:rgba(255,255,255,0.3); font-size:0.9rem;">
+      Camera loading...
+    </span>
+  </div>
+
+  <video id="video" autoplay muted playsinline style="display:none;"></video>
+  <canvas id="canvas"></canvas>
+
+  <!-- Button -->
+  <button class="btn btn-login" id="btnLogin" onclick="doLogin()" disabled>
+    📷 Scan Face & Mark Attendance
+  </button>
+
+  <!-- Result -->
+  <div id="result"></div>
+</div>
+
+<script>
+  const loggedInEmployeeId = localStorage.getItem('logged_in_employee_id');
+  const loggedInName       = localStorage.getItem('logged_in_name');
+
+  if (!loggedInEmployeeId) {
+      window.location.href = '/login-page';
+  }
+
+  const video     = document.getElementById('video');
+  const canvas    = document.getElementById('canvas');
+  const cameraBox = document.getElementById('cameraBox');
+  const btnLogin  = document.getElementById('btnLogin');
+
+  let userLatitude  = null;
+  let userLongitude = null;
+  let locationReady = false;
+  let cameraReady   = false;
+
+  // LOCATION
+  function getLocation() {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        userLatitude  = pos.coords.latitude;
+        userLongitude = pos.coords.longitude;
+        locationReady = true;
+
+        setLocationBar('success',
+          `📍 Location detected (±${Math.round(pos.coords.accuracy)}m)`
+        );
+
+        checkReadyToLogin();
+      },
+      () => setLocationBar('error', '❌ Location access denied'),
+      { enableHighAccuracy: true }
+    );
+  }
+
+  // CAMERA
+  async function startCamera() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+
+      cameraBox.innerHTML = '';
+      video.style.display = 'block';
+      cameraBox.appendChild(video);
+
+      const oval = document.createElement('div');
+      oval.className = 'oval';
+      cameraBox.appendChild(oval);
+
+      video.srcObject = stream;
+      cameraReady = true;
+
+      checkReadyToLogin();
+
+    } catch {
+      cameraBox.innerHTML = '❌ Camera denied';
+    }
+  }
+
+  function checkReadyToLogin() {
+    if (locationReady && cameraReady) {
+      btnLogin.disabled = false;
+    }
+  }
+
+  // LOGIN
+  async function doLogin() {
+    if (!userLatitude || !userLongitude) {
+      setResult('⚠️ Location not detected', 'res-error');
+      return;
+    }
+
+    setResult('⏳ Verifying...', 'res-loading');
+    btnLogin.disabled = true;
+
+    canvas.width  = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+
+    canvas.toBlob(async (blob) => {
+
+      const formData = new FormData();
+
+      // ✅ employee_id removed
+      formData.append('latitude',  userLatitude);
+      formData.append('longitude', userLongitude);
+      formData.append('face_image', blob, 'face.jpg');
+      formData.append('logged_in_employee_id', loggedInEmployeeId);
+
+      try {
+        const token = localStorage.getItem('token');   // ← read token
+        const res = await fetch('/api/face-login', {
+          method: 'POST',
+          headers: {
+              'Authorization': `Bearer ${token}`     // ← send token in header
+          },
+          body: formData
+        });
+
+        const result = await res.json();
+
+        if (result.success) {
+          let actionMsg = '';
+
+          if (result.action === 'check_in')               actionMsg = '✅ Checked IN';
+          else if (result.action === 'check_out')         actionMsg = '👋 Checked OUT';
+          else if (result.action === 'already_completed') actionMsg = 'ℹ️ Already completed today';
+
+          const emp = result.employee;
+
+          setResult(
+            `${actionMsg}<br>
+             👤 <strong>${emp.name}</strong><br>
+             🪪 ID: ${emp.employee_id}<br>
+             💼 ${emp.designation} — ${emp.department}<br>
+             🎯 Confidence: ${result.confidence}%<br>
+             📍 Location: ${result.location}<br>
+             🕐 Time: ${result.time}`,
+            'res-success'
+          );
+
+        } else {
+          setResult(`❌ ${result.message}`, 'res-error');
+        }
+
+      } catch (err) {
+        setResult(`❌ ${err.message}`, 'res-error');
+      }
+
+      btnLogin.disabled = false;
+
+    }, 'image/jpeg');
+  }
+
+  function setLocationBar(type, msg) {
+    const el = document.getElementById('locationBar');
+    el.className = `location-bar loc-${type}`;
+    el.innerHTML = msg;
+  }
+
+  function setResult(msg, cls) {
+    const el = document.getElementById('result');
+    el.innerHTML = msg;
+    el.className = cls;
+  }
+
+  window.onload = () => {
+      document.getElementById('loggedInUser').innerHTML =
+          `👤 Logged in as: <strong>${loggedInName}</strong>`;
+      getLocation();
+      startCamera();
+  };
+</script>
+
+</body>
+</html>
