@@ -1259,6 +1259,330 @@ def export_monthly_attendance_excel():
     )
 
 # ─────────────────────────────────────────────
+# POST /admin/attendance/timesheet
+# Employee-wise timesheet for a month (check-in/out per day)
+# ─────────────────────────────────────────────
+@admin_bp.route('/admin/attendance/timesheet', methods=['POST'])
+@admin_required
+def timesheet():
+    month_input = request.form.get('month', '').strip()
+    year_input  = request.form.get('year',  '').strip()
+
+    today        = date.today()
+    target_month = int(month_input) if month_input else today.month
+    target_year  = int(year_input)  if year_input  else today.year
+
+    if not (1 <= target_month <= 12):
+        return jsonify({'success': False, 'message': 'month must be between 1 and 12'}), 400
+
+    total_days_in_month = monthrange(target_year, target_month)[1]
+    from_date = date(target_year, target_month, 1)
+    to_date   = date(target_year, target_month, total_days_in_month)
+
+    employees   = Employee.query.filter_by(active=True).order_by(Employee.created_at.asc()).all()
+    all_records = db.session.query(AttendanceRecord).filter(
+        AttendanceRecord.date >= from_date,
+        AttendanceRecord.date <= to_date
+    ).all()
+
+    # Build lookup: {employee_db_id: {day: record_dict}}
+    lookup = {}
+    for rec in all_records:
+        lookup.setdefault(rec.employee_id, {})[rec.date.day] = rec
+
+    # Sundays + DB holidays
+    sunday_days   = [d for d in range(1, total_days_in_month + 1)
+                     if date(target_year, target_month, d).weekday() == 6]
+    db_holidays   = Holiday.query.filter(
+        db.extract('year',  Holiday.holiday_date) == target_year,
+        db.extract('month', Holiday.holiday_date) == target_month
+    ).all()
+    holiday_lookup   = {h.holiday_date.day: h.holiday_name for h in db_holidays}
+    all_holiday_days = set(sunday_days) | set(holiday_lookup.keys())
+
+    DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+    result = []
+    for idx, emp in enumerate(employees, start=1):
+        days      = {}
+        total_hrs = 0.0
+        present   = wfh = absent = 0
+
+        for d in range(1, total_days_in_month + 1):
+            cur = date(target_year, target_month, d)
+            day_name = DAY_NAMES[cur.weekday()]
+
+            if cur > today:
+                days[str(d)] = {'day': day_name, 'type': 'future',
+                                 'check_in': None, 'check_out': None,
+                                 'hours': None, 'location': None}
+            elif d in all_holiday_days:
+                days[str(d)] = {'day': day_name, 'type': 'holiday',
+                                 'label': holiday_lookup.get(d, 'Sunday'),
+                                 'check_in': None, 'check_out': None,
+                                 'hours': None, 'location': None}
+            elif emp.id in lookup and d in lookup[emp.id]:
+                rec = lookup[emp.id][d]
+                hrs = None
+                if rec.check_in and rec.check_out:
+                    hrs = round((rec.check_out - rec.check_in).seconds / 3600, 2)
+                    total_hrs += hrs
+                loc_type = rec.location_type or 'Office'
+                rec_type = 'wfh' if loc_type != 'Office' else 'present'
+                if rec_type == 'wfh':
+                    wfh += 1
+                else:
+                    present += 1
+                days[str(d)] = {
+                    'day':       day_name,
+                    'type':      rec_type,
+                    'check_in':  rec.check_in.strftime('%H:%M')  if rec.check_in  else None,
+                    'check_out': rec.check_out.strftime('%H:%M') if rec.check_out else None,
+                    'hours':     hrs,
+                    'location':  loc_type
+                }
+            else:
+                absent += 1
+                days[str(d)] = {'day': day_name, 'type': 'absent',
+                                 'check_in': None, 'check_out': None,
+                                 'hours': None, 'location': None}
+
+        working_days = total_days_in_month - len(all_holiday_days)
+        result.append({
+            'sno':         idx,
+            'employee_id': emp.employee_id,
+            'name':        emp.name,
+            'department':  emp.department,
+            'designation': emp.designation,
+            'phone':       emp.phone,
+            'email':       emp.email,
+            'days':        days,
+            'summary': {
+                'present':      present,
+                'wfh':          wfh,
+                'absent':       absent,
+                'holidays':     len(all_holiday_days),
+                'working_days': working_days,
+                'days_worked':  present + wfh,
+                'total_hours':  round(total_hrs, 2),
+            }
+        })
+
+    return jsonify({
+        'success':         True,
+        'month':           target_month,
+        'year':            target_year,
+        'month_name':      date(target_year, target_month, 1).strftime('%B %Y'),
+        'total_days':      total_days_in_month,
+        'total_employees': len(result),
+        'sheet':           result
+    }), 200
+
+
+# ─────────────────────────────────────────────
+# POST /admin/attendance/timesheet/export
+# Download timesheet as Excel — one sheet per employee
+# ─────────────────────────────────────────────
+@admin_bp.route('/admin/attendance/timesheet/export', methods=['POST'])
+@admin_required
+def export_timesheet_excel():
+    month_input = request.form.get('month', '').strip()
+    year_input  = request.form.get('year',  '').strip()
+
+    today        = date.today()
+    target_month = int(month_input) if month_input else today.month
+    target_year  = int(year_input)  if year_input  else today.year
+
+    if not (1 <= target_month <= 12):
+        return jsonify({'success': False, 'message': 'month must be between 1 and 12'}), 400
+
+    total_days_in_month = monthrange(target_year, target_month)[1]
+    month_name          = date(target_year, target_month, 1).strftime('%B %Y')
+    from_date = date(target_year, target_month, 1)
+    to_date   = date(target_year, target_month, total_days_in_month)
+
+    employees   = Employee.query.filter_by(active=True).order_by(Employee.created_at.asc()).all()
+    all_records = db.session.query(AttendanceRecord).filter(
+        AttendanceRecord.date >= from_date,
+        AttendanceRecord.date <= to_date
+    ).all()
+
+    lookup = {}
+    for rec in all_records:
+        lookup.setdefault(rec.employee_id, {})[rec.date.day] = rec
+
+    sunday_days   = [d for d in range(1, total_days_in_month + 1)
+                     if date(target_year, target_month, d).weekday() == 6]
+    db_holidays   = Holiday.query.filter(
+        db.extract('year',  Holiday.holiday_date) == target_year,
+        db.extract('month', Holiday.holiday_date) == target_month
+    ).all()
+    holiday_lookup   = {h.holiday_date.day: h.holiday_name for h in db_holidays}
+    all_holiday_days = set(sunday_days) | set(holiday_lookup.keys())
+
+    # ── Styles ──
+    navy_fill    = PatternFill('solid', start_color='1F3864')
+    blue_fill    = PatternFill('solid', start_color='2E75B6')
+    green_fill   = PatternFill('solid', start_color='E2EFDA')
+    red_fill     = PatternFill('solid', start_color='FCE4D6')
+    purple_fill  = PatternFill('solid', start_color='EAD1DC')
+    holiday_fill = PatternFill('solid', start_color='D6E4F0')
+    grey_fill    = PatternFill('solid', start_color='F2F2F2')
+    header_fill  = PatternFill('solid', start_color='DEEAF1')
+
+    def thin_border():
+        s = Side(style='thin', color='CCCCCC')
+        return Border(left=s, right=s, top=s, bottom=s)
+
+    def cell_style(ws, row, col, value=None, bold=False, color='000000',
+                   fill=None, align='center', wrap=False, size=9):
+        c = ws.cell(row=row, column=col, value=value)
+        c.font      = Font(name='Arial', bold=bold, color=color, size=size)
+        c.alignment = Alignment(horizontal=align, vertical='center', wrap_text=wrap)
+        c.border    = thin_border()
+        if fill:
+            c.fill = fill
+        return c
+
+    DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+
+    wb = Workbook()
+    wb.remove(wb.active)   # remove default blank sheet
+
+    for emp in employees:
+        # Sheet name max 31 chars, no special chars
+        sheet_name = (emp.name or emp.employee_id)[:28].strip()
+        ws = wb.create_sheet(title=sheet_name)
+        ws.freeze_panes = 'A7'
+
+        # ── Row 1: Company header ──
+        ws.merge_cells('A1:I1')
+        c = ws.cell(row=1, column=1, value='ESFITA INFOTECH — Monthly Time Sheet')
+        c.font      = Font(name='Arial', bold=True, color='FFFFFF', size=13)
+        c.fill      = navy_fill
+        c.alignment = Alignment(horizontal='center', vertical='center')
+        ws.row_dimensions[1].height = 26
+
+        # ── Row 2: Employee month header ──
+        ws.merge_cells('A2:I2')
+        c = ws.cell(row=2, column=1,
+                    value=f"{emp.name}'s Time Sheet for the Month — {month_name}")
+        c.font      = Font(name='Arial', bold=True, color='FFFFFF', size=11)
+        c.fill      = blue_fill
+        c.alignment = Alignment(horizontal='center', vertical='center')
+        ws.row_dimensions[2].height = 22
+
+        # ── Row 3–5: Employee details ──
+        detail_font = Font(name='Arial', size=9)
+        label_font  = Font(name='Arial', bold=True, size=9)
+        for r, (lbl1, val1, lbl2, val2) in enumerate([
+            ('Employee Name:',  emp.name or '—',         'Designation:',  emp.designation or '—'),
+            ('Employee Phone:', emp.phone or '—',         'Department:',   emp.department  or '—'),
+            ('Employee Email:', emp.email or '—',         'Employee ID#:', emp.employee_id or '—'),
+        ], start=3):
+            ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=1)
+            ws.cell(row=r, column=1, value=lbl1).font = label_font
+            ws.merge_cells(start_row=r, start_column=2, end_row=r, end_column=5)
+            ws.cell(row=r, column=2, value=val1).font = detail_font
+            ws.cell(row=r, column=6, value=lbl2).font = label_font
+            ws.merge_cells(start_row=r, start_column=7, end_row=r, end_column=9)
+            ws.cell(row=r, column=7, value=val2).font = detail_font
+            ws.row_dimensions[r].height = 18
+
+        # ── Row 6: Column headers ──
+        col_headers = ['Date', 'Day', 'Module', 'Task Description',
+                        'Reg. Hours', 'IN TIME', 'OUT TIME', 'Working Hours', 'Work Location']
+        for ci, h in enumerate(col_headers, start=1):
+            cell_style(ws, 6, ci, h, bold=True, color='FFFFFF', fill=blue_fill, size=10)
+        ws.row_dimensions[6].height = 20
+
+        # ── Column widths ──
+        widths = [14, 12, 14, 42, 11, 11, 11, 14, 14]
+        for ci, w in enumerate(widths, start=1):
+            ws.column_dimensions[get_column_letter(ci)].width = w
+
+        # ── Data rows ──
+        total_hrs = 0.0
+        present = wfh = absent = 0
+
+        for d in range(1, total_days_in_month + 1):
+            row     = d + 6
+            cur     = date(target_year, target_month, d)
+            day_str = DAY_NAMES[cur.weekday()]
+            reg_hrs = None if d in sunday_days else 9
+
+            if cur > today:
+                row_fill = None
+                in_t = out_t = hrs_val = loc = None
+                label = None
+            elif d in all_holiday_days:
+                row_fill = holiday_fill
+                in_t = out_t = hrs_val = None
+                loc   = holiday_lookup.get(d, 'Sunday / Holiday')
+                label = loc
+                reg_hrs = None
+            elif emp.id in lookup and d in lookup[emp.id]:
+                rec = lookup[emp.id][d]
+                in_t  = rec.check_in.strftime('%H:%M')  if rec.check_in  else None
+                out_t = rec.check_out.strftime('%H:%M') if rec.check_out else None
+                hrs_val = None
+                if rec.check_in and rec.check_out:
+                    hrs_val = round((rec.check_out - rec.check_in).seconds / 3600, 2)
+                    total_hrs += hrs_val
+                loc = rec.location_type or 'Office'
+                label = None
+                if loc != 'Office':
+                    row_fill = purple_fill
+                    wfh += 1
+                else:
+                    row_fill = green_fill
+                    present += 1
+            else:
+                row_fill = red_fill
+                in_t = out_t = hrs_val = None
+                loc   = None
+                label = 'Absent'
+                absent += 1
+
+            task_desc = label or ''
+            cell_style(ws, row, 1, cur.strftime('%d-%m-%Y'), fill=row_fill, align='center')
+            cell_style(ws, row, 2, day_str,  fill=row_fill, align='center')
+            cell_style(ws, row, 3, None,     fill=row_fill, align='center')
+            cell_style(ws, row, 4, task_desc, fill=row_fill, align='left', wrap=True)
+            cell_style(ws, row, 5, reg_hrs,  fill=row_fill, align='center')
+            cell_style(ws, row, 6, in_t,     fill=row_fill, align='center')
+            cell_style(ws, row, 7, out_t,    fill=row_fill, align='center')
+            cell_style(ws, row, 8, hrs_val,  fill=row_fill, align='center')
+            cell_style(ws, row, 9, loc,      fill=row_fill, align='center')
+            ws.row_dimensions[row].height = 16
+
+        # ── Summary row ──
+        sum_row = total_days_in_month + 7
+        ws.merge_cells(start_row=sum_row, start_column=1, end_row=sum_row, end_column=5)
+        c = ws.cell(row=sum_row, column=1,
+                    value=f'Summary — Present: {present}  WFH: {wfh}  Absent: {absent}  Holidays: {len(all_holiday_days)}  Total Hours: {round(total_hrs, 2)}h')
+        c.font      = Font(name='Arial', bold=True, size=9)
+        c.fill      = grey_fill
+        c.alignment = Alignment(horizontal='left', vertical='center')
+        c.border    = thin_border()
+        ws.row_dimensions[sum_row].height = 18
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    timestamp = get_ist_now().strftime('%d%m%Y_%H%M%S')
+    filename  = f'Timesheet_{month_name.replace(" ", "_")}_{timestamp}.xlsx'
+
+    return send_file(
+        buffer,
+        as_attachment  = True,
+        download_name  = filename,
+        mimetype       = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+
+
+# ─────────────────────────────────────────────
 # POST /admin/holidays/add
 # ─────────────────────────────────────────────
 @admin_bp.route('/admin/holidays/add', methods=['POST'])
